@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 # 載入 .env 檔案（裡面放你的 Token）
 load_dotenv()
 TOKEN = os.getenv("TOKEN")
+NASgmail = os.getenv("NASgmail")
+NASpassword = os.getenv("NASpassword")
+NASURL = os.getenv("NASURL")
 
 # 設定 intents（很重要！）
 intents = discord.Intents.default()
@@ -19,13 +22,19 @@ class MyBot(discord.Client):
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
 
+# 把這個加到你的 class MyBot 裡面（或直接替換原本的 setup_hook）
     async def setup_hook(self):
-        # 這裡可以加 guild-specific sync（開發時超快）
-        # 把 YOUR_GUILD_ID 換成你測試伺服器的 ID（右鍵伺服器圖示 → Copy Server ID）
-        # guild = discord.Object(id=YOUR_GUILD_ID)
-        # self.tree.copy_global_to(guild=guild)
-        # await self.tree.sync(guild=guild)
-        
+        print("開始同步指令...")
+
+        # ←←← 把這裡換成你的伺服器 ID！（剛剛複製的那串數字）
+        GUILD_ID = 1461250014381609002  # 例如：你的測試伺服器 ID
+
+        guild = discord.Object(id=GUILD_ID)
+        self.tree.copy_global_to(guild=guild)
+        # 只同步這個伺服器（幾秒內生效）
+        await self.tree.sync(guild=guild)
+
+        print(f"指令已成功同步到伺服器 ID: {GUILD_ID}（幾秒後去 Discord 打 / 檢查）")
         # 正式上線時用這個（全域同步，會比較慢）
         await self.tree.sync()
         print("斜線指令已同步（全域）")
@@ -39,23 +48,37 @@ async def on_ready():
     print("------")
 
 # ==================== 指令區 ====================
+# 上傳檔案
+@bot.tree.command(name="uploadfile", description="上傳到雲端網站")
+@app_commands.choices(檔案類別=[
+    app_commands.Choice(name="大咪", value="bigmeet"),
+    app_commands.Choice(name="AI工具", value="aitool"),
+    app_commands.Choice(name="審論文", value="watchpaper"),
+    app_commands.Choice(name="報書", value="bookreport"),
+    app_commands.Choice(name="文章", value="aticle"),
+    app_commands.Choice(name="其他", value="other"),
+])
+@app_commands.describe(
+    檔案類別="請選擇你的檔案類型（下拉選單）",
+    檔案="上傳你的 PPT 檔案（.ppt 或 .pptx）"
+)
+async def uploadfile(interaction: discord.Interaction, 檔案類別: app_commands.Choice[str], 檔案: discord.Attachment):
+    # 先延遲回應（因為處理檔案可能需要一點時間，避免 Discord 認為逾時）
+    await interaction.response.defer(ephemeral=True)  # 延遲回應，只自己看得到
 
-@bot.tree.command(name="hello", description="跟機器人打個招呼")
-async def hello(interaction: discord.Interaction):
-    await interaction.response.send_message("哈囉！我是你的機器人～", ephemeral=True)
+    # 上傳雲端
+    file_size_mb = round(檔案.size / (1024 * 1024), 2)  # 轉成 MB
+    file_info = (
+        f"**上傳成功！** 🎉\n"
+        f"檔案類別：{檔案類別.name} ({檔案類別.value})\n"
+        f"檔名：{檔案.filename}\n"
+        f"大小：{file_size_mb} MB\n"
+        f"上傳者：{interaction.user.mention}\n"
+        f"檔案 URL（暫存，可下載 24 小時）：{檔案.url}"
+    )
 
-
-@bot.tree.command(name="ping", description="檢查機器人延遲")
-async def ping(interaction: discord.Interaction):
-    latency = round(bot.latency * 1000)
-    await interaction.response.send_message(f"Pong! 目前延遲：**{latency}ms**")
-
-
-@bot.tree.command(name="說", description="讓機器人幫你說話")
-@app_commands.describe(內容="你要我說什麼？")
-async def say(interaction: discord.Interaction, 內容: str):
-    await interaction.response.send_message(內容)
-
+    await interaction.followup.send(file_info, ephemeral=True)
+# =============================================================================
 
 # 一個簡單的 help 指令（超實用！）
 @bot.tree.command(name="help", description="顯示所有可用指令")
