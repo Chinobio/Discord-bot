@@ -79,7 +79,7 @@ async def uploadfile(interaction: discord.Interaction, 檔案類別: app_command
 
     await interaction.followup.send(file_info, ephemeral=True)
 # =============================================================================
-
+# ===============================
 # 一個簡單的 help 指令（超實用！）
 @bot.tree.command(name="help", description="顯示所有可用指令")
 async def help_command(interaction: discord.Interaction):
