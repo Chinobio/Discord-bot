@@ -3,7 +3,8 @@ import discord
 from discord import app_commands
 import os
 from dotenv import load_dotenv
-import datetime
+from datetime import datetime
+
 
 # 載入 .env 檔案（裡面放你的 Token）
 load_dotenv()
