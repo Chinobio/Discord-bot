@@ -4,6 +4,7 @@ from discord import app_commands
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import re
 
 
 # 載入 .env 檔案（裡面放你的 Token）
@@ -92,8 +93,16 @@ async def uploadfile(
     os.makedirs(target_dir, exist_ok=True)
 
     # 3) 檔名：日期_原始檔名
-    safe_filename = 檔案.filename.replace(" ", "_")
-    final_filename = f"{today}_{safe_filename}"
+    original_name = 檔案.filename.strip()
+
+    # 移除開頭的：8 碼日期 + 一個以上空白
+    # 例：20260119 XXX.pdf -> XXX.pdf
+    clean_name = re.sub(r"^\d{8}\s+", "", original_name)
+
+    # 如果你不希望檔名有空白（選擇性）
+    clean_name = clean_name.replace(" ", "_")
+
+    final_filename = clean_name
     save_path = os.path.join(target_dir, final_filename)
 
     # 4) 寫入 NAS
@@ -108,7 +117,6 @@ async def uploadfile(
         f"📄 檔名：`{final_filename}`\n"
         f"📦 大小：{file_size_mb} MB"
     )
-    await interaction.response.defer()   # 拿掉 ephemeral=True
     await interaction.followup.send(msg)
 # =============================================================================
 # ===============================
