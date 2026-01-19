@@ -49,35 +49,64 @@ async def on_ready():
 
 # ==================== 指令區 ====================
 # 上傳檔案
+BASE_PATH = "/mnt/reports"
+SMALLMEET_TYPES = {"aitool", "watchpaper", "bookreport", "article"}
 @bot.tree.command(name="uploadfile", description="上傳到雲端網站")
+@app_commands.describe(
+    檔案類別="請選擇你的檔案類型（下拉選單）",
+    檔案="上傳你的 PPT 檔案（.ppt 或 .pptx 或 .pdf）"
+)
 @app_commands.choices(檔案類別=[
     app_commands.Choice(name="大咪", value="bigmeet"),
     app_commands.Choice(name="AI工具", value="aitool"),
     app_commands.Choice(name="審論文", value="watchpaper"),
     app_commands.Choice(name="報書", value="bookreport"),
-    app_commands.Choice(name="文章", value="aticle"),
+    app_commands.Choice(name="文章", value="article"),
     app_commands.Choice(name="其他", value="other"),
 ])
-@app_commands.describe(
-    檔案類別="請選擇你的檔案類型（下拉選單）",
-    檔案="上傳你的 PPT 檔案（.ppt 或 .pptx）"
-)
-async def uploadfile(interaction: discord.Interaction, 檔案類別: app_commands.Choice[str], 檔案: discord.Attachment):
-    # 先延遲回應（因為處理檔案可能需要一點時間，避免 Discord 認為逾時）
-    await interaction.response.defer(ephemeral=True)  # 延遲回應，只自己看得到
+async def uploadfile(
+    interaction: discord.Interaction,
+    檔案類別: app_commands.Choice[str],
+    檔案: discord.Attachment
+):
+    await interaction.response.defer(ephemeral=True)
 
-    # 上傳雲端
-    file_size_mb = round(檔案.size / (1024 * 1024), 2)  # 轉成 MB
-    file_info = (
-        f"**上傳成功！** 🎉\n"
-        f"檔案類別：{檔案類別.name} ({檔案類別.value})\n"
-        f"檔名：{檔案.filename}\n"
-        f"大小：{file_size_mb} MB\n"
-        f"上傳者：{interaction.user.mention}\n"
-        f"檔案 URL（暫存，可下載 24 小時）：{檔案.url}"
+    today = datetime.now().strftime("%Y%m%d")
+    category_value = 檔案類別.value
+
+    # 1) 決定路徑：bigmeet vs smallmeet/{subtype}
+    if category_value == "bigmeet":
+        target_dir = os.path.join(BASE_PATH, "bigmeet", today)
+        logical_path = f"bigmeet/{today}"
+    elif category_value in SMALLMEET_TYPES:
+        target_dir = os.path.join(BASE_PATH, "smallmeet", category_value, today)
+        logical_path = f"smallmeet/{category_value}/{today}"
+    else:
+        # 其他 → 你也可以決定要放 smallmeet/other
+        target_dir = os.path.join(BASE_PATH, "smallmeet", "other", today)
+        logical_path = f"smallmeet/other/{today}"
+
+    # 2) 建資料夾（不存在就建立）
+    os.makedirs(target_dir, exist_ok=True)
+
+    # 3) 檔名：日期_原始檔名
+    safe_filename = 檔案.filename.replace(" ", "_")
+    final_filename = f"{today}_{safe_filename}"
+    save_path = os.path.join(target_dir, final_filename)
+
+    # 4) 寫入 NAS
+    await 檔案.save(save_path)
+
+    file_size_mb = round(檔案.size / (1024 * 1024), 2)
+
+    msg = (
+        f"✅ **上傳成功**\n\n"
+        f"📂 類別：{檔案類別.name} ({檔案類別.value})\n"
+        f"📁 位置：`{logical_path}`\n"
+        f"📄 檔名：`{final_filename}`\n"
+        f"📦 大小：{file_size_mb} MB"
     )
-
-    await interaction.followup.send(file_info, ephemeral=True)
+    await interaction.followup.send(msg, ephemeral=True)
 # =============================================================================
 # ===============================
 # 一個簡單的 help 指令（超實用！）
