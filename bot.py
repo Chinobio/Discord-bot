@@ -106,7 +106,7 @@ async def uploadfile(
         f"📄 檔名：`{final_filename}`\n"
         f"📦 大小：{file_size_mb} MB"
     )
-    await interaction.followup.send(msg, ephemeral=True)
+    await interaction.followup.send(msg, ephemeral=False)
 # =============================================================================
 # ===============================
 # 一個簡單的 help 指令（超實用！）
