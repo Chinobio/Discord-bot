@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 import re
-
+import resend
 
 # 載入 .env 檔案（裡面放你的 Token）
 load_dotenv()
@@ -54,6 +54,21 @@ async def on_ready():
 # 上傳檔案
 BASE_PATH = "/mnt/reports"
 SMALLMEET_TYPES = {"aitool", "watchpaper", "bookreport", "article"}
+
+# Resend 設定
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")  # 從 .env 讀取
+FIXED_RECIPIENT = "chuangyinezhe@gmail.com"     # ← 改成你要寄的 email
+SENDER_EMAIL = "ailab@hongyu.dev"  # 從 Resend 取得的寄件人
+
+# 如果沒有環境變數就印錯誤（開發用）
+if not RESEND_API_KEY:
+    print("警告：找不到 RESEND_API_KEY，請檢查 .env 檔案")
+
+resend.api_key = RESEND_API_KEY
+
+# ───────────────────────────────────────────────
+# 指令本體
+# ───────────────────────────────────────────────
 @bot.tree.command(name="uploadfile", description="上傳到雲端網站")
 @app_commands.describe(
     檔案類別="請選擇你的檔案類型（下拉選單）",
@@ -85,39 +100,65 @@ async def uploadfile(
         target_dir = os.path.join(BASE_PATH, "smallmeet", category_value, today)
         logical_path = f"smallmeet/{category_value}/{today}"
     else:
-        # 其他 → 你也可以決定要放 smallmeet/other
         target_dir = os.path.join(BASE_PATH, "smallmeet", "other", today)
         logical_path = f"smallmeet/other/{today}"
 
-    # 2) 建資料夾（不存在就建立）
+    # 2) 建資料夾
     os.makedirs(target_dir, exist_ok=True)
 
-    # 3) 檔名：日期_原始檔名
+    # 3) 清理檔名
     original_name = 檔案.filename.strip()
-
-    # 移除開頭的：8 碼日期 + 一個以上空白
-    # 例：20260119 XXX.pdf -> XXX.pdf
     clean_name = re.sub(r"^\d{8}\s+", "", original_name)
-
-    # 如果你不希望檔名有空白（選擇性）
     clean_name = clean_name.replace(" ", "_")
-
     final_filename = clean_name
     save_path = os.path.join(target_dir, final_filename)
 
-    # 4) 寫入 NAS
+    # 4) 儲存檔案到 NAS
     await 檔案.save(save_path)
 
     file_size_mb = round(檔案.size / (1024 * 1024), 2)
 
+    # 5) 準備回覆訊息
     msg = (
         f"✅ **上傳成功**\n\n"
         f"📂 類別：{檔案類別.name} ({檔案類別.value})\n"
         f"📁 位置：`{logical_path}`\n"
         f"📄 檔名：`{final_filename}`\n"
-        f"📦 大小：{file_size_mb} MB"
+        f"📦 大小：{file_size_mb} MB\n"
+        f"上傳者：{interaction.user.mention}"
     )
-    await interaction.followup.send(msg)
+
+    # 6) 寄信通知固定收件人
+    try:
+        email_content = f"""
+        <h2>新檔案上傳通知</h2>
+        <p>上傳者：{interaction.user.name} ({interaction.user.id})</p>
+        <p>時間：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        <p>類別：{檔案類別.name} ({檔案類別.value})</p>
+        <p>位置：{logical_path}</p>
+        <p>檔名：{final_filename}</p>
+        <p>大小：{file_size_mb} MB</p>
+        <p>原始檔名：{original_name}</p>
+        <hr>
+        <p>這是自動通知，由 Discord 機器人寄出。</p>
+        """
+
+        params = {
+            "from": SENDER_EMAIL,
+            "to": [FIXED_RECIPIENT],
+            "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
+            "html": email_content,
+        }
+
+        email_result = resend.Emails.send(params)
+
+        msg += f"\n\n📧 已自動寄通知信給固定收件人（ID: {email_result['id']})"
+
+    except Exception as e:
+        msg += f"\n\n⚠️ 寄信失敗：{str(e)}（但檔案已成功上傳）"
+
+    # 7) 回覆使用者
+    await interaction.followup.send(msg, ephemeral=True)
 # =============================================================================
 # ===============================
 # 一個簡單的 help 指令（超實用！）
