@@ -87,7 +87,7 @@ async def uploadfile(
     檔案類別: app_commands.Choice[str],
     檔案: discord.Attachment
 ):
-    await interaction.response.defer(ephemeral=False)  # 公開顯示
+    await interaction.response.defer(ephemeral=False)
 
     original_name = 檔案.filename.strip()
 
@@ -95,7 +95,7 @@ async def uploadfile(
     date_match = re.match(r"^(\d{8})\s+", original_name)
     folder_date = date_match.group(1) if date_match else datetime.now().strftime("%Y%m%d")
 
-    # 2. 決定資料夾路徑（用 folder_date）
+    # 2. 決定資料夾路徑
     category_value = 檔案類別.value
     if category_value == "bigmeet":
         target_dir = os.path.join(BASE_PATH, "bigmeet", folder_date)
@@ -107,21 +107,21 @@ async def uploadfile(
         target_dir = os.path.join(BASE_PATH, "smallmeet", "other", folder_date)
         logical_path = f"smallmeet/other/{folder_date}"
 
-    # 3. 建立資料夾（如果不存在）
+    # 3. 建立資料夾
     os.makedirs(target_dir, exist_ok=True)
 
-    # 4. 清理檔名：去掉開頭日期 + 空白，空白換底線
+    # 4. 清理檔名
     clean_name = re.sub(r"^\d{8}\s+", "", original_name)
     clean_name = clean_name.replace(" ", "_")
     final_filename = clean_name
     save_path = os.path.join(target_dir, final_filename)
 
-    # 5. 儲存檔案
+    # 5. 儲存檔案到 NAS
     await 檔案.save(save_path)
 
     file_size_mb = round(檔案.size / (1024 * 1024), 2)
 
-    # 6. 準備公開回覆訊息
+    # 6. 公開回覆訊息
     msg = (
         f"✅ **上傳成功**\n\n"
         f"類別：{檔案類別.name} ({檔案類別.value})\n"
@@ -133,8 +133,12 @@ async def uploadfile(
 
     await interaction.followup.send(msg)
 
-    # 7. 自動寄信給教授（簡單版，只留時間、類別、檔名）
+    # 7. 自動寄信（帶附件 + CC）
     try:
+        # 讀取剛上傳的檔案內容（用來當附件）
+        with open(save_path, "rb") as f:
+            file_bytes = f.read()
+
         email_content = f"""
 教授好，
 
@@ -143,6 +147,7 @@ async def uploadfile(
 時間：{datetime.now().strftime("%Y-%m-%d %H:%M")}
 類別：{檔案類別.name} ({檔案類別.value})
 檔名：{final_filename}
+大小：{file_size_mb} MB
 
 如需查看，請至 NAS 對應資料夾。
 
@@ -150,22 +155,27 @@ async def uploadfile(
         """.strip()
 
         params = {
-            "from": "通知系統 <notify@chuangyinezhe.dpdns.org>",
-            "to": ["chuangyinezhe@gmail.com"],  # 教授的 email，改成你要的
+            "from": "通知系統 <ailab@chuangyinezhe.dpdns.org>",
+            "to": ["chuangyinezhe@gmail.com"],  # 主要收件人（教授）
+            "cc": ["你的CC信箱@gmail.com"],  # ← 這裡加 CC 收件人（可多個，例如 ["a@gmail.com", "b@gmail.com"]）
             "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
-            "text": email_content,  # 用純文字，避免 HTML 被擋
+            "text": email_content,
+            "attachments": [
+                {
+                    "filename": final_filename,
+                    "content": file_bytes
+                }
+            ]
         }
 
         email_result = resend.Emails.send(params)
 
-        # 寄信成功後，再公開回覆一條通知
-        success_msg = f"📧 已自動寄通知信給教授（ID: {email_result['id']})"
+        success_msg = f"📧 已自動寄通知信給教授（含附件），並 CC 相關人員（ID: {email_result['id']})"
         await interaction.channel.send(success_msg)
 
     except Exception as e:
         error_msg = f"⚠️ 寄信失敗：{str(e)}（但檔案已成功上傳）"
         await interaction.channel.send(error_msg)
-
 # =============================================================================
 # 一個簡單的 help 指令（超實用！）
 @bot.tree.command(name="help", description="顯示所有可用指令")
