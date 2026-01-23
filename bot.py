@@ -58,7 +58,7 @@ SMALLMEET_TYPES = {"aitool", "watchpaper", "bookreport", "article"}
 # Resend 設定
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")  # 從 .env 讀取
 FIXED_RECIPIENT = "chuangyinezhe@gmail.com"     # ← 改成你要寄的 email
-SENDER_EMAIL = "onboarding@resend.dev"  # 從 Resend 取得的寄件人
+SENDER_EMAIL = "ailab@chuangyinezhe.dpdns.org"  # 從 Resend 取得的寄件人
 
 # 如果沒有環境變數就印錯誤（開發用）
 if not RESEND_API_KEY:
@@ -160,7 +160,6 @@ async def uploadfile(
     # 7) 回覆使用者
     await interaction.followup.send(msg, ephemeral=True)
 # =============================================================================
-# ===============================
 # 一個簡單的 help 指令（超實用！）
 @bot.tree.command(name="help", description="顯示所有可用指令")
 async def help_command(interaction: discord.Interaction):
