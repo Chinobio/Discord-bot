@@ -157,7 +157,7 @@ async def uploadfile(
         params = {
             "from": "通知系統 <ailab@chuangyinezhe.dpdns.org>",
             "to": ["chuangyinezhe@gmail.com"],  # 主要收件人（教授）
-            "cc": ["你的CC信箱@gmail.com"],  # ← 這裡加 CC 收件人（可多個，例如 ["a@gmail.com", "b@gmail.com"]）
+            "cc": ["chuangyinezhe@gmail.com"],  # ← 這裡加 CC 收件人（可多個，例如 ["a@gmail.com", "b@gmail.com"]）
             "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
             "text": email_content,
             "attachments": [
