@@ -85,7 +85,7 @@ resend.api_key = RESEND_API_KEY
 async def uploadfile(
     interaction: discord.Interaction,
     檔案類別: app_commands.Choice[str],
-    檔案: list[discord.Attachment]  # ← 改成 list 支援多檔
+    檔案: discord.Attachment  # ← 改成 list 支援多檔
 ):
     await interaction.response.defer(ephemeral=True)
 
