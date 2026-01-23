@@ -121,7 +121,7 @@ async def uploadfile(
 
     file_size_mb = round(檔案.size / (1024 * 1024), 2)
 
-    # 6. 公開回覆訊息
+    # 6. 公開回覆訊息（簡單版）
     msg = (
         f"✅ **上傳成功**\n\n"
         f"類別：{檔案類別.name} ({檔案類別.value})\n"
@@ -133,44 +133,47 @@ async def uploadfile(
 
     await interaction.followup.send(msg)
 
-    # 7. 自動寄信（帶附件 + CC）
+    # 7. 自動寄信（只帶附件 + CC）
     try:
-        # 讀取剛上傳的檔案內容（用來當附件）
+        import base64
+
+        # 讀取檔案並轉 base64
         with open(save_path, "rb") as f:
             file_bytes = f.read()
+            file_base64 = base64.b64encode(file_bytes).decode('utf-8')
 
+        # 簡單信件內容（可再改）
         email_content = f"""
-教授好，
+Dear professor，
 
 已上傳新檔案：
+- 類別：{檔案類別.name}
+- 檔名：{final_filename}
+- 大小：{file_size_mb} MB
+- 位置：{logical_path}
 
-時間：{datetime.now().strftime("%Y-%m-%d %H:%M")}
-類別：{檔案類別.name} ({檔案類別.value})
-檔名：{final_filename}
-大小：{file_size_mb} MB
-
-如需查看，請至 NAS 對應資料夾。
+附件已附上，請查收。
 
 謝謝！
         """.strip()
 
         params = {
-            "from": "通知系統 <ailab@chuangyinezhe.dpdns.org>",
-            "to": ["chuangyinezhe@gmail.com"],  # 主要收件人（教授）
-            "cc": ["chuangyinezhe@gmail.com"],  # ← 這裡加 CC 收件人（可多個，例如 ["a@gmail.com", "b@gmail.com"]）
+            "from": "通知系統 <notify@chuangyinezhe.dpdns.org>",
+            "to": ["chuangyinezhe@gmail.com"],          # 教授（主要收件人）
+            # "cc": ["助教@gmail.com", "組員@gmail.com"],  # ← 改成你要 CC 的 email 清單，或留空 []
             "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
             "text": email_content,
             "attachments": [
                 {
                     "filename": final_filename,
-                    "content": file_bytes
+                    "content": file_base64
                 }
             ]
         }
 
         email_result = resend.Emails.send(params)
 
-        success_msg = f"📧 已自動寄通知信給教授（含附件），並 CC 相關人員（ID: {email_result['id']})"
+        success_msg = f"📧 已自動寄通知信給教授（含附件）並 CC 相關人員（ID: {email_result['id']})"
         await interaction.channel.send(success_msg)
 
     except Exception as e:
