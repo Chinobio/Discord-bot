@@ -69,10 +69,10 @@ resend.api_key = RESEND_API_KEY
 # ───────────────────────────────────────────────
 # 指令本體
 # ───────────────────────────────────────────────
-@bot.tree.command(name="uploadfile", description="上傳到雲端網站（支援多檔）")
+@bot.tree.command(name="uploadfile", description="上傳到雲端網站（單一檔案）")
 @app_commands.describe(
     檔案類別="請選擇你的檔案類型（下拉選單）",
-    檔案="上傳你的檔案（.ppt .pptx .pdf 可多選）"
+    檔案="上傳你的檔案（.ppt .pptx .pdf）"
 )
 @app_commands.choices(檔案類別=[
     app_commands.Choice(name="大咪", value="bigmeet"),
@@ -85,79 +85,74 @@ resend.api_key = RESEND_API_KEY
 async def uploadfile(
     interaction: discord.Interaction,
     檔案類別: app_commands.Choice[str],
-    檔案: discord.Attachment  # ← 改成 list 支援多檔
+    檔案: discord.Attachment  # 單一檔案
 ):
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=True)  # 延遲回應
 
+    original_name = 檔案.filename.strip()
+
+    # 1. 從檔名取出開頭 8 碼日期（如果有）
+    date_match = re.match(r"^(\d{8})\s+", original_name)
+    folder_date = date_match.group(1) if date_match else datetime.now().strftime("%Y%m%d")
+
+    # 2. 決定資料夾路徑（用檔名日期）
     category_value = 檔案類別.value
-    uploaded_files = []  # 儲存每個檔案的資訊
+    if category_value == "bigmeet":
+        target_dir = os.path.join(BASE_PATH, "bigmeet", folder_date)
+        logical_path = f"bigmeet/{folder_date}"
+    elif category_value in SMALLMEET_TYPES:
+        target_dir = os.path.join(BASE_PATH, "smallmeet", category_value, folder_date)
+        logical_path = f"smallmeet/{category_value}/{folder_date}"
+    else:
+        target_dir = os.path.join(BASE_PATH, "smallmeet", "other", folder_date)
+        logical_path = f"smallmeet/other/{folder_date}"
 
-    for attach in 檔案:
-        # 1. 從檔名取出開頭 8 碼日期（如果有）
-        original_name = attach.filename.strip()
-        date_match = re.match(r"^(\d{8})\s+", original_name)
-        folder_date = date_match.group(1) if date_match else datetime.now().strftime("%Y%m%d")
+    # 3. 建立資料夾（如果不存在）
+    os.makedirs(target_dir, exist_ok=True)
 
-        # 2. 決定資料夾路徑（用檔名日期）
-        if category_value == "bigmeet":
-            target_dir = os.path.join(BASE_PATH, "bigmeet", folder_date)
-            logical_path = f"bigmeet/{folder_date}"
-        elif category_value in SMALLMEET_TYPES:
-            target_dir = os.path.join(BASE_PATH, "smallmeet", category_value, folder_date)
-            logical_path = f"smallmeet/{category_value}/{folder_date}"
-        else:
-            target_dir = os.path.join(BASE_PATH, "smallmeet", "other", folder_date)
-            logical_path = f"smallmeet/other/{folder_date}"
+    # 4. 清理檔名：去掉開頭日期 + 空白，空白換底線
+    clean_name = re.sub(r"^\d{8}\s+", "", original_name)
+    clean_name = clean_name.replace(" ", "_")
+    final_filename = clean_name
+    save_path = os.path.join(target_dir, final_filename)
 
-        # 3. 建立資料夾（如果不存在）
-        os.makedirs(target_dir, exist_ok=True)
+    # 5. 儲存檔案
+    await 檔案.save(save_path)
 
-        # 4. 清理檔名：去掉開頭日期 + 空白，空白換底線
-        clean_name = re.sub(r"^\d{8}\s+", "", original_name)
-        clean_name = clean_name.replace(" ", "_")
-        final_filename = clean_name
-        save_path = os.path.join(target_dir, final_filename)
+    file_size_mb = round(檔案.size / (1024 * 1024), 2)
 
-        # 5. 儲存檔案
-        await attach.save(save_path)
+    # 6. 準備回覆訊息（公開顯示）
+    msg = (
+        f"✅ **上傳成功**\n\n"
+        f"類別：{檔案類別.name} ({檔案類別.value})\n"
+        f"位置：`{logical_path}`\n"
+        f"檔名：`{final_filename}`\n"
+        f"大小：{file_size_mb} MB\n"
+        f"上傳者：{interaction.user.mention}"
+    )
 
-        file_size_mb = round(attach.size / (1024 * 1024), 2)
-        uploaded_files.append({
-            "final_filename": final_filename,
-            "size_mb": file_size_mb,
-            "save_path": save_path
-        })
-
-    # 6. 回覆訊息
-    msg = f"✅ **上傳成功**（{len(uploaded_files)} 個檔案）\n\n"
-    msg += f"類別：{檔案類別.name} ({檔案類別.value})\n"
-    msg += f"位置範例：`{logical_path}`（以每個檔案的日期資料夾為準）\n\n"
-    msg += "已上傳檔案：\n"
-    for f in uploaded_files:
-        msg += f"- `{f['final_filename']}` ({f['size_mb']} MB)\n"
-
-    # 7. 預設寄信內容（給教授）
-    file_list_text = "\n".join([f"- {f['final_filename']}" for f in uploaded_files])
+    # 7. 預設寄信內容（給教授，簡單版）
     default_email_content = f"""
-        教授好，
-
-        已上傳新檔案：
-
-        時間：{datetime.now().strftime("%Y-%m-%d %H:%M")}
-        類別：{檔案類別.name} ({檔案類別.value})
-        檔案列表：
-        {file_list_text}
-
-        如需查看，請至 NAS 對應日期資料夾。
-
-        謝謝！
+    教授好，
+    
+    已上傳新檔案：
+    
+    時間：{datetime.now().strftime("%Y-%m-%d %H:%M")}
+    類別：{檔案類別.name} ({檔案類別.value})
+    位置：{logical_path}
+    檔名：{final_filename}
+    
+    如需查看，請至 NAS 對應資料夾。
+    
+    謝謝！
     """.strip()
 
     msg += "\n\n**預設寄信內容（可複製修改後寄給教授）：**\n```"
     msg += default_email_content
     msg += "```"
 
-    await interaction.followup.send(msg, ephemeral=True)
+    # 改成公開顯示（大家都能看見）
+    await interaction.followup.send(msg, ephemeral=False)
 # =============================================================================
 # 一個簡單的 help 指令（超實用！）
 @bot.tree.command(name="help", description="顯示所有可用指令")
