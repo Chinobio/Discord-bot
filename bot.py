@@ -91,9 +91,14 @@ async def uploadfile(
 
     original_name = 檔案.filename.strip()
 
-    # 1. 從檔名取出開頭 8 碼日期（如果有）
+    # 1. 從檔名取出開頭 8 碼日期
     date_match = re.match(r"^(\d{8})\s+", original_name)
-    folder_date = date_match.group(1) if date_match else datetime.now().strftime("%Y%m%d")
+    if date_match:
+        folder_date = date_match.group(1)
+        is_auto_date = False
+    else:
+        folder_date = datetime.now().strftime("%Y%m%d")
+        is_auto_date = True
 
     # 2. 決定資料夾路徑
     category_value = 檔案類別.value
@@ -107,10 +112,11 @@ async def uploadfile(
         target_dir = os.path.join(BASE_PATH, "smallmeet", "other", folder_date)
         logical_path = f"smallmeet/other/{folder_date}"
 
-    # 3. 建立資料夾
+    # 3. 檢查資料夾是否存在，不存在就建立
+    folder_exists = os.path.exists(target_dir)
     os.makedirs(target_dir, exist_ok=True)
 
-    # 4. 清理檔名
+    # 4. 清理檔名（砍掉前面日期和空格）
     clean_name = re.sub(r"^\d{8}\s+", "", original_name)
     clean_name = clean_name.replace(" ", "_")
     final_filename = clean_name
@@ -122,10 +128,15 @@ async def uploadfile(
     file_size_mb = round(檔案.size / (1024 * 1024), 2)
 
     # 6. 公開回覆訊息（簡單版）
+    folder_status = "✨ 新建資料夾" if not folder_exists else "📁 既有資料夾"
+    date_status = f"📅 檔名日期：{folder_date}" if not is_auto_date else f"📅 自動日期（無檔名日期）：{folder_date}"
+    
     msg = (
         f"✅ **上傳成功**\n\n"
         f"類別：{檔案類別.name} ({檔案類別.value})\n"
         f"位置：`{logical_path}`\n"
+        f"{folder_status}\n"
+        f"{date_status}\n"
         f"檔名：`{final_filename}`\n"
         f"大小：{file_size_mb} MB\n"
         f"上傳者：{interaction.user.mention}"
