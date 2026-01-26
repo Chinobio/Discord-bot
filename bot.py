@@ -90,7 +90,7 @@ async def uploadfile(
     await interaction.response.defer(ephemeral=False)
 
     original_name = 檔案.filename.strip()
-
+    temp = original_name
     # 1. 從檔名取出開頭 8 碼日期
     date_match = re.match(r"^(\d{8})\s+", original_name)
     if date_match:
@@ -118,7 +118,6 @@ async def uploadfile(
 
     # 4. 清理檔名（砍掉前面日期和空格）
     clean_name = re.sub(r"^\d{8}\s+", "", original_name)
-    clean_name = clean_name.replace(" ", "_")
     final_filename = clean_name
     save_path = os.path.join(target_dir, final_filename)
 
@@ -140,6 +139,7 @@ async def uploadfile(
         f"檔名：`{final_filename}`\n"
         f"大小：{file_size_mb} MB\n"
         f"上傳者：{interaction.user.mention}"
+        f"temp={temp}"
     )
 
     await interaction.followup.send(msg)
