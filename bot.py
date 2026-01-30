@@ -191,6 +191,28 @@ Dear professor，
         error_msg = f"⚠️ 寄信失敗：{str(e)}（但檔案已成功上傳）"
         await interaction.channel.send(error_msg)
 # =============================================================================
+@bot.tree.command(name = "createfolder", description = "建立每周新的資料夾")
+async def createfolder(
+    interaction: discord.Interaction,
+    日期: str = None
+):
+    await interaction.response.defer(ephemeral=False)
+# 路徑設定
+    BASE_PATH = "/mnt/reports"
+    needcreatefolder = ["bigmeet", "aitool", "watchpaper", "article"]
+    if 日期:
+        folder_date = 日期
+    else:
+        folder_date = datetime.now().strftime("%Y%m%d")
+    for i in needcreatefolder:
+        if i == "bigmeet":
+            target_dir = os.path.join(BASE_PATH, "bigmeet", folder_date)
+        else:
+            target_dir = os.path.join(BASE_PATH, "smallmeet", i, folder_date)
+        os.makedirs(target_dir, exist_ok=True)
+    msg = f"✅ 已建立 {folder_date} 的資料夾結構！"
+    await interaction.followup.send(msg, ephemeral=False)
+    
 # 一個簡單的 help 指令（超實用！）
 @bot.tree.command(name="help", description="顯示所有可用指令")
 async def help_command(interaction: discord.Interaction):
