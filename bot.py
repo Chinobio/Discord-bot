@@ -103,7 +103,7 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
         app_commands.Choice(name=f, value=f)
         for f in folders
         if current in f
-    ][:25]
+    ][:50]  # 最多回傳 50 個選項
 
 
 @bot.tree.command(name="uploadfile", description="上傳到 NAS 並自動寄信")
@@ -112,10 +112,10 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
     日期資料夾="選擇已有日期資料夾",
     檔案="選擇檔案"
 )
-@app_commands.autocomplete(日期資料夾=date_autocomplete)
 @app_commands.choices(檔案類別=[
     app_commands.Choice(name=k, value=v) for k, v in CATEGORIES.items()
 ])
+@app_commands.autocomplete(日期資料夾=date_autocomplete)
 async def uploadfile(
     interaction: discord.Interaction,
     檔案類別: app_commands.Choice[str],
@@ -157,6 +157,7 @@ async def uploadfile(
     # Resend 寄信
     # ===============================
     try:
+        import base64
         with open(save_path, "rb") as f:
             file_base64 = base64.b64encode(f.read()).decode()
 
