@@ -69,109 +69,116 @@ resend.api_key = RESEND_API_KEY
 # ───────────────────────────────────────────────
 # 指令本體
 # ───────────────────────────────────────────────
-@bot.tree.command(name="uploadfile", description="上傳到雲端網站（單一檔案）")
+BASE_PATH = "/mnt/reports"
+
+CATEGORIES = {
+    "大咪": "bigmeet",
+    "AI工具": "aitool",
+    "審論文": "watchpaper",
+    "報書": "bookreport",
+    "文章": "article",
+    "其他": "other",
+}
+
+# === 日期資料夾 autocomplete ===
+async def date_autocomplete(interaction: discord.Interaction, current: str):
+    category = interaction.namespace.檔案類別
+
+    if not category:
+        return []
+
+    cat_value = CATEGORIES.get(category.name)
+
+    if cat_value == "bigmeet":
+        base = os.path.join(BASE_PATH, "bigmeet")
+    else:
+        base = os.path.join(BASE_PATH, "smallmeet", cat_value)
+
+    if not os.path.exists(base):
+        return []
+
+    folders = sorted(os.listdir(base), reverse=True)
+
+    return [
+        app_commands.Choice(name=f, value=f)
+        for f in folders
+        if current in f
+    ][:25]
+
+
+@bot.tree.command(name="uploadfile", description="上傳到 NAS 並自動寄信")
 @app_commands.describe(
-    檔案類別="請選擇你的檔案類型（下拉選單）",
-    檔案="上傳你的檔案（.ppt .pptx .pdf）"
+    檔案類別="選擇分類",
+    日期資料夾="選擇已有日期資料夾",
+    檔案="選擇檔案"
 )
+@app_commands.autocomplete(日期資料夾=date_autocomplete)
 @app_commands.choices(檔案類別=[
-    app_commands.Choice(name="大咪", value="bigmeet"),
-    app_commands.Choice(name="AI工具", value="aitool"),
-    app_commands.Choice(name="審論文", value="watchpaper"),
-    app_commands.Choice(name="報書", value="bookreport"),
-    app_commands.Choice(name="文章", value="article"),
-    app_commands.Choice(name="其他", value="other"),
+    app_commands.Choice(name=k, value=v) for k, v in CATEGORIES.items()
 ])
 async def uploadfile(
     interaction: discord.Interaction,
     檔案類別: app_commands.Choice[str],
+    日期資料夾: str,
     檔案: discord.Attachment
 ):
-    await interaction.response.defer(ephemeral=False)
+    await interaction.response.defer()
 
-    original_name = 檔案.filename.strip()
-    temp = original_name
-    # 1. 從檔名取出開頭 8 碼日期
-    date_match = re.match(r"^(\d{8})\s+", original_name)
-    if date_match:
-        folder_date = date_match.group(1)
-        is_auto_date = False
+    category = 檔案類別.value
+
+    if category == "bigmeet":
+        target_dir = os.path.join(BASE_PATH, "bigmeet", 日期資料夾)
+        logical_path = f"bigmeet/{日期資料夾}"
     else:
-        folder_date = datetime.now().strftime("%Y%m%d")
-        is_auto_date = True
+        target_dir = os.path.join(BASE_PATH, "smallmeet", category, 日期資料夾)
+        logical_path = f"smallmeet/{category}/{日期資料夾}"
 
-    # 2. 決定資料夾路徑
-    category_value = 檔案類別.value
-    if category_value == "bigmeet":
-        target_dir = os.path.join(BASE_PATH, "bigmeet", folder_date)
-        logical_path = f"bigmeet/{folder_date}"
-    elif category_value in SMALLMEET_TYPES:
-        target_dir = os.path.join(BASE_PATH, "smallmeet", category_value, folder_date)
-        logical_path = f"smallmeet/{category_value}/{folder_date}"
-    else:
-        target_dir = os.path.join(BASE_PATH, "smallmeet", "other", folder_date)
-        logical_path = f"smallmeet/other/{folder_date}"
-
-    # 3. 檢查資料夾是否存在，不存在就建立
-    folder_exists = os.path.exists(target_dir)
     os.makedirs(target_dir, exist_ok=True)
 
-    # 4. 清理檔名（砍掉前面日期和空格）
-    clean_name = re.sub(r"^\d{8}\s+", "", original_name)
-    final_filename = clean_name
+    final_filename = 檔案.filename
     save_path = os.path.join(target_dir, final_filename)
 
-    # 5. 儲存檔案到 NAS
+    # === 存 NAS ===
     await 檔案.save(save_path)
 
-    file_size_mb = round(檔案.size / (1024 * 1024), 2)
+    size_mb = round(檔案.size / 1024 / 1024, 2)
 
-    # 6. 公開回覆訊息（簡單版）
-    folder_status = "✨ 新建資料夾" if not folder_exists else "📁 既有資料夾"
-    date_status = f"📅 檔名日期：{folder_date}" if not is_auto_date else f"📅 自動日期（無檔名日期）：{folder_date}"
-    
-    msg = (
-        f"✅ **上傳成功**\n\n"
-        f"類別：{檔案類別.name} ({檔案類別.value})\n"
-        f"位置：`{logical_path}`\n"
-        f"{folder_status}\n"
-        f"{date_status}\n"
-        f"檔名：`{final_filename}`\n"
-        f"大小：{file_size_mb} MB\n"
+    # === Discord 回覆 ===
+    await interaction.followup.send(
+        f"✅ 上傳完成\n"
+        f"類別：{檔案類別.name}\n"
+        f"資料夾：{logical_path}\n"
+        f"檔名：{final_filename}\n"
+        f"大小：{size_mb} MB\n"
         f"上傳者：{interaction.user.mention}"
-        f"temp={temp}"
     )
 
-    await interaction.followup.send(msg)
-
-    # 7. 自動寄信（只帶附件 + CC）
+    # ===============================
+    # Resend 寄信
+    # ===============================
     try:
-        import base64
-
-        # 讀取檔案並轉 base64
         with open(save_path, "rb") as f:
-            file_bytes = f.read()
-            file_base64 = base64.b64encode(file_bytes).decode('utf-8')
+            file_base64 = base64.b64encode(f.read()).decode()
 
-        # 簡單信件內容（可再改）
         email_content = f"""
-Dear professor，
+Dear professor,
 
 已上傳新檔案：
-- 類別：{檔案類別.name}
-- 檔名：{final_filename}
-- 大小：{file_size_mb} MB
-- 位置：{logical_path}
+
+類別：{檔案類別.name}
+檔名：{final_filename}
+大小：{size_mb} MB
+位置：{logical_path}
 
 附件已附上，請查收。
 
-謝謝！
-        """.strip()
+謝謝
+""".strip()
 
         params = {
             "from": "通知系統 <notify@chuangyinezhe.dpdns.org>",
-            "to": ["chuangyinezhe@gmail.com"],          # 教授（主要收件人）
-            # "cc": ["助教@gmail.com", "組員@gmail.com"],  # ← 改成你要 CC 的 email 清單，或留空 []
+            "to": ["chuangyinezhe@gmail.com"],
+            # "cc": [],
             "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
             "text": email_content,
             "attachments": [
@@ -182,14 +189,12 @@ Dear professor，
             ]
         }
 
-        email_result = resend.Emails.send(params)
+        result = resend.Emails.send(params)
 
-        success_msg = f"📧 已自動寄通知信給教授（含附件）並 CC 相關人員（ID: {email_result['id']})"
-        await interaction.channel.send(success_msg)
+        await interaction.channel.send(f"📧 已寄出通知信（ID: {result['id']})")
 
     except Exception as e:
-        error_msg = f"⚠️ 寄信失敗：{str(e)}（但檔案已成功上傳）"
-        await interaction.channel.send(error_msg)
+        await interaction.channel.send(f"⚠️ 寄信失敗，但檔案已上傳：{e}")
 # =============================================================================
 @bot.tree.command(name = "createfolder", description = "建立每周新的資料夾")
 async def createfolder(
