@@ -7,6 +7,7 @@ from datetime import datetime
 import re
 import resend
 import asyncio
+from datetime import datetime, timedelta
 
 # 載入 .env 檔案（裡面放你的 Token）
 load_dotenv()
@@ -81,30 +82,32 @@ CATEGORIES = {
     "其他": "other",
 }
 
-# === 日期資料夾 autocomplete ===
 async def date_autocomplete(interaction: discord.Interaction, current: str):
-    category = interaction.namespace.檔案類別
+    # 取得今天（伺服器時間）
+    today = datetime.now()   # 或用 datetime.utcnow() 看你想要本地還是 UTC
 
-    if not category:
-        return []
+    # 找到本週的星期一
+    days_to_monday = today.weekday()          # 0=星期一, 6=星期日
+    this_monday = today - timedelta(days=days_to_monday)
 
-    cat_value = CATEGORIES.get(category.name)
+    # 生成最近 16 個星期一（包含本週）
+    date_options = []
+    for i in range(16):
+        monday = this_monday - timedelta(weeks=i)
+        date_str = monday.strftime("%Y%m%d")
+        date_options.append(date_str)
 
-    if cat_value == "bigmeet":
-        base = os.path.join(BASE_PATH, "bigmeet")
-    else:
-        base = os.path.join(BASE_PATH, "smallmeet", cat_value)
+    # 過濾符合使用者目前輸入的字串（不分大小寫）
+    filtered = [
+        date_str for date_str in date_options
+        if current.lower() in date_str.lower() or not current  # 沒輸入時全部顯示
+    ]
 
-    if not os.path.exists(base):
-        return []
-
-    folders = sorted(os.listdir(base), reverse=True)
-
+    # 轉成 Choice，回傳最多 25 個（Discord 官方限制 25）
     return [
-        app_commands.Choice(name=f, value=f)
-        for f in folders
-        if current in f
-    ][:50]  # 最多回傳 50 個選項
+        app_commands.Choice(name=f"{d} (週一)", value=d)
+        for d in filtered[:25]
+    ]
 
 async def send_email_async(params):
     try:
@@ -116,7 +119,7 @@ async def send_email_async(params):
 @bot.tree.command(name="uploadfile", description="上傳到 NAS 並自動寄信")
 @app_commands.describe(
     檔案類別="選擇分類",
-    日期資料夾="選擇已有日期資料夾",
+    日期資料夾="選擇或輸入日期資料夾 (建議選週一日期)",
     檔案="選擇檔案"
 )
 @app_commands.choices(檔案類別=[
@@ -131,26 +134,32 @@ async def uploadfile(
 ):
     await interaction.response.defer()
 
-    category = 檔案類別.value
+    category_value = 檔案類別.value
 
-    if category == "bigmeet":
+    # 決定目標資料夾路徑
+    if category_value == "bigmeet":
         target_dir = os.path.join(BASE_PATH, "bigmeet", 日期資料夾)
         logical_path = f"bigmeet/{日期資料夾}"
     else:
-        target_dir = os.path.join(BASE_PATH, "smallmeet", category, 日期資料夾)
-        logical_path = f"smallmeet/{category}/{日期資料夾}"
+        target_dir = os.path.join(BASE_PATH, "smallmeet", category_value, 日期資料夾)
+        logical_path = f"smallmeet/{category_value}/{日期資料夾}"
 
-    os.makedirs(target_dir, exist_ok=True)
+    # 自動建立資料夾（如果不存在）
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except Exception as e:
+        await interaction.followup.send(f"建立資料夾失敗：{str(e)}", ephemeral=True)
+        return
 
+    # 儲存檔案
     final_filename = 檔案.filename
     save_path = os.path.join(target_dir, final_filename)
 
-    # === 存 NAS ===
     await 檔案.save(save_path)
 
-    size_mb = round(檔案.size / 1024 / 1024, 2)
+    size_mb = round(檔案.size / (1024 * 1024), 2)
 
-    # === Discord 回覆 ===
+    # Discord 回覆
     await interaction.followup.send(
         f"✅ 上傳完成\n"
         f"類別：{檔案類別.name}\n"
@@ -160,9 +169,9 @@ async def uploadfile(
         f"上傳者：{interaction.user.mention}"
     )
 
-    # ===============================
-    # Resend 寄信
-    # ===============================
+    # ────────────────────────────────────────
+    # 寄信部分保持原樣（以下不變）
+    # ────────────────────────────────────────
     import base64
     with open(save_path, "rb") as f:
         file_base64 = base64.b64encode(f.read()).decode()
@@ -184,19 +193,18 @@ Dear professor,
 """.strip()
 
     params = {
-    "from": "通知系統 <notify@chuangyinezhe.dpdns.org>",
-    "to": ["chuangyinezhe@gmail.com"],
-    "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
-    "text": email_content,
-    "attachments": [
-        {
-            "filename": final_filename,
-            "content": file_base64
-        }
-    ]
-}
+        "from": "通知系統 <ailab@chuangyinezhe.dpdns.org>",
+        "to": ["chuangyinezhe@gmail.com"],
+        "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
+        "text": email_content,
+        "attachments": [
+            {
+                "filename": final_filename,
+                "content": file_base64
+            }
+        ]
+    }
 
-# 🔥 背景寄信（不等待）
     asyncio.create_task(send_email_async(params))
 
 # =============================================================================
