@@ -83,12 +83,15 @@ CATEGORIES = {
 
 # === 日期資料夾 autocomplete ===
 async def date_autocomplete(interaction: discord.Interaction, current: str):
-    category = interaction.namespace.檔案類別
+    # 直接用參數名稱（最穩定）
+    category_choice = interaction.namespace.category
 
-    if not category:
+    if not category_choice:
         return []
 
-    cat_value = CATEGORIES.get(category.name)
+    # category_choice 現在是 "bigmeet" / "aitool" 這類 value
+    # 而不是 Choice 物件
+    cat_value = category_choice   # 已經是 value 了
 
     if cat_value == "bigmeet":
         base = os.path.join(BASE_PATH, "bigmeet")
@@ -103,8 +106,8 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
     return [
         app_commands.Choice(name=f, value=f)
         for f in folders
-        if current in f
-    ][:50]  # 最多回傳 50 個選項
+        if current.lower() in f.lower()   # 建議不分大小寫搜尋
+    ][:25]   # Discord 官方上限是 25 個（不是 50）
 
 async def send_email_async(params):
     try:
@@ -115,45 +118,45 @@ async def send_email_async(params):
 
 @bot.tree.command(name="uploadfile", description="上傳到 NAS 並自動寄信")
 @app_commands.describe(
-    檔案類別="選擇分類",
-    日期資料夾="選擇已有日期資料夾",
-    檔案="選擇檔案"
+    category="選擇分類",
+    date_folder="選擇已有日期資料夾",
+    file="選擇檔案"
 )
-@app_commands.choices(檔案類別=[
+@app_commands.choices(category=[               # ← 改這裡
     app_commands.Choice(name=k, value=v) for k, v in CATEGORIES.items()
 ])
 @app_commands.autocomplete(日期資料夾=date_autocomplete)
 async def uploadfile(
     interaction: discord.Interaction,
-    檔案類別: app_commands.Choice[str],
-    日期資料夾: str,
-    檔案: discord.Attachment
+    category: app_commands.Choice[str],
+    date_folder: str,
+    file: discord.Attachment
 ):
     await interaction.response.defer()
 
-    category = 檔案類別.value
+    category_choose = category.value
 
     if category == "bigmeet":
-        target_dir = os.path.join(BASE_PATH, "bigmeet", 日期資料夾)
-        logical_path = f"bigmeet/{日期資料夾}"
+        target_dir = os.path.join(BASE_PATH, "bigmeet", date_folder)
+        logical_path = f"bigmeet/{date_folder}"
     else:
-        target_dir = os.path.join(BASE_PATH, "smallmeet", category, 日期資料夾)
-        logical_path = f"smallmeet/{category}/{日期資料夾}"
+        target_dir = os.path.join(BASE_PATH, "smallmeet", category_choose, date_folder)
+        logical_path = f"smallmeet/{category_choose}/{date_folder}"
 
     os.makedirs(target_dir, exist_ok=True)
 
-    final_filename = 檔案.filename
+    final_filename = file.filename
     save_path = os.path.join(target_dir, final_filename)
 
     # === 存 NAS ===
-    await 檔案.save(save_path)
+    await file.save(save_path)
 
-    size_mb = round(檔案.size / 1024 / 1024, 2)
+    size_mb = round(file.size / 1024 / 1024, 2)
 
     # === Discord 回覆 ===
     await interaction.followup.send(
         f"✅ 上傳完成\n"
-        f"類別：{檔案類別.name}\n"
+        f"類別：{category_choose}\n"
         f"資料夾：{logical_path}\n"
         f"檔名：{final_filename}\n"
         f"大小：{size_mb} MB\n"
@@ -172,20 +175,21 @@ Dear professor,
 
 已上傳新檔案：
 
-類別：{檔案類別.name}
+類別：{category_choose}
 檔名：{final_filename}
 大小：{size_mb} MB
 位置：{logical_path}
 
 附件已附上，請查收。
 
-謝謝
+學生 印哲
+敬上
 """.strip()
 
     params = {
     "from": "通知系統 <notify@chuangyinezhe.dpdns.org>",
     "to": ["chuangyinezhe@gmail.com"],
-    "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
+    "subject": f"[{category_choose}] 新檔案上傳 - {final_filename}",
     "text": email_content,
     "attachments": [
         {
