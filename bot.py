@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import re
 import resend
+import asyncio
 
 # 載入 .env 檔案（裡面放你的 Token）
 load_dotenv()
@@ -105,6 +106,12 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
         if current in f
     ][:50]  # 最多回傳 50 個選項
 
+async def send_email_async(params):
+    try:
+        await asyncio.to_thread(resend.Emails.send, params)
+        print("EMAIL SENT")
+    except Exception as e:
+        print("EMAIL ERROR:", e)
 
 @bot.tree.command(name="uploadfile", description="上傳到 NAS 並自動寄信")
 @app_commands.describe(
@@ -156,12 +163,11 @@ async def uploadfile(
     # ===============================
     # Resend 寄信
     # ===============================
-    try:
-        import base64
-        with open(save_path, "rb") as f:
-            file_base64 = base64.b64encode(f.read()).decode()
+    import base64
+    with open(save_path, "rb") as f:
+        file_base64 = base64.b64encode(f.read()).decode()
 
-        email_content = f"""
+    email_content = f"""
 Dear professor,
 
 已上傳新檔案：
@@ -176,26 +182,22 @@ Dear professor,
 謝謝
 """.strip()
 
-        params = {
-            "from": "通知系統 <notify@chuangyinezhe.dpdns.org>",
-            "to": ["chuangyinezhe@gmail.com"],
-            # "cc": [],
-            "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
-            "text": email_content,
-            "attachments": [
-                {
-                    "filename": final_filename,
-                    "content": file_base64
-                }
-            ]
+    params = {
+    "from": "通知系統 <notify@chuangyinezhe.dpdns.org>",
+    "to": ["chuangyinezhe@gmail.com"],
+    "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
+    "text": email_content,
+    "attachments": [
+        {
+            "filename": final_filename,
+            "content": file_base64
         }
+    ]
+}
 
-        result = resend.Emails.send(params)
+# 🔥 背景寄信（不等待）
+    asyncio.create_task(send_email_async(params))
 
-        await interaction.channel.send(f"📧 已寄出通知信（ID: {result['id']})")
-
-    except Exception as e:
-        await interaction.channel.send(f"⚠️ 寄信失敗，但檔案已上傳：{e}")
 # =============================================================================
 @bot.tree.command(name = "createfolder", description = "建立每周新的資料夾")
 async def createfolder(
