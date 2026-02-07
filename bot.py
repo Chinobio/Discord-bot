@@ -76,7 +76,8 @@ BASE_PATH = "/mnt/reports"
 CATEGORIES = {
     "大咪": "bigmeet",
     "AI工具": "aitool",
-    "審論文": "watchpaper",
+    "審論文": "reviewpaper",
+    "論文分享": "sharepaper",
     "報書": "bookreport",
     "文章": "article",
     "其他": "other",
@@ -216,7 +217,7 @@ async def createfolder(
     await interaction.response.defer(ephemeral=False)
 # 路徑設定
     BASE_PATH = "/mnt/reports"
-    needcreatefolder = ["bigmeet", "aitool", "watchpaper", "article"]
+    needcreatefolder = ["bigmeet", "aitool", "reviewpaper", "article","sharepaper"]
     if 日期:
         folder_date = 日期
     else:
