@@ -131,6 +131,7 @@ async def uploadfile(
     interaction: discord.Interaction,
     檔案類別: app_commands.Choice[str],
     日期資料夾: str,
+    學生姓名: str,
     檔案: discord.Attachment
 ):
     await interaction.response.defer()
@@ -184,12 +185,10 @@ Dear professor,
 
 類別：{檔案類別.name}
 檔名：{final_filename}
-大小：{size_mb} MB
-位置：{logical_path}
 
 附件已附上，請查收。
 
-學生 印哲
+學生 {學生姓名}
 敬上
 """.strip()
 
