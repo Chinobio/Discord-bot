@@ -82,33 +82,56 @@ CATEGORIES = {
     "其他": "other",
 }
 
-async def date_autocomplete(interaction: discord.Interaction, current: str):
-    # 取得今天（伺服器時間）
-    today = datetime.now()   # 或用 datetime.utcnow() 看你想要本地還是 UTC
+BOOKREPORTLIST = {
+    "Large Language Models A Deep Dive" : "Large Language Models A Deep Dive"
+}
 
-    # 找到本週的星期一
-    days_to_monday = today.weekday()          # 0=星期一, 6=星期日
+async def date_autocomplete(interaction: discord.Interaction, current: str):
+
+    # 取得目前選的分類
+    selected_category = None
+    try:
+        selected_category = interaction.namespace.檔案類別
+    except AttributeError:
+        pass
+
+    # =====================================================
+    # 📚 如果是 bookreport → 顯示書單
+    # =====================================================
+    if selected_category == "bookreport":
+
+        filtered = [
+            name for name in BOOKREPORTLIST.keys()
+            if current.lower() in name.lower() or not current
+        ]
+
+        return [
+            app_commands.Choice(name=name, value=name)
+            for name in filtered[:25]
+        ]
+
+    # =====================================================
+    # 📅 其他分類 → 顯示週一日期（原本邏輯）
+    # =====================================================
+    today = datetime.now()
+    days_to_monday = today.weekday()
     this_monday = today - timedelta(days=days_to_monday)
 
-    # 生成最近 16 個星期一（包含本週）
     date_options = []
     for i in range(16):
         monday = this_monday - timedelta(weeks=i)
         date_str = monday.strftime("%Y%m%d")
         date_options.append(date_str)
 
-    # 過濾符合使用者目前輸入的字串（不分大小寫）
     filtered = [
         date_str for date_str in date_options
-        if current.lower() in date_str.lower() or not current  # 沒輸入時全部顯示
+        if current.lower() in date_str.lower() or not current
     ]
 
-    # 轉成 Choice，回傳最多 25 個（Discord 官方限制 25）
     return [
         app_commands.Choice(name=f"{d} (週一)", value=d)
         for d in filtered[:25]
     ]
-
 async def send_email_async(params):
     try:
         await asyncio.to_thread(resend.Emails.send, params)
