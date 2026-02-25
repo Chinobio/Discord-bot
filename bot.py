@@ -240,7 +240,7 @@ async def uploadfile(
     檔案: discord.Attachment
 ):
     if not await has_permission(interaction.user.id, "upload"):
-        await interaction.response.send_message("你目前沒有上傳權限。", ephemeral=True)
+        await interaction.response.send_message("你目前沒有上傳權限。", ephemeral=False)
         return
 
     await interaction.response.defer()
@@ -259,7 +259,7 @@ async def uploadfile(
     try:
         os.makedirs(target_dir, exist_ok=True)
     except Exception as e:
-        await interaction.followup.send(f"建立資料夾失敗：{str(e)}", ephemeral=True)
+        await interaction.followup.send(f"建立資料夾失敗：{str(e)}", ephemeral=False)
         return
 
     # 儲存檔案
@@ -330,14 +330,14 @@ async def setidentity(
     身分: app_commands.Choice[str]
 ):
     if not await has_permission(interaction.user.id, "manage_identity"):
-        await interaction.response.send_message("你沒有管理身分的權限。", ephemeral=True)
+        await interaction.response.send_message("你沒有管理身分的權限。", ephemeral=False)
         return
 
     await set_user_identity(使用者.id, 身分.value)
     await apply_discord_role(使用者, 身分.value)
     await interaction.response.send_message(
         f"已設定 {使用者.mention} 身分為 `{身分.value}`。",
-        ephemeral=True
+        ephemeral=False
     )
 
 
@@ -348,7 +348,7 @@ async def myidentity(interaction: discord.Interaction):
     perms_text = ", ".join(perms) if perms else "無"
     await interaction.response.send_message(
         f"你的身分：`{identity}`\n可用權限：{perms_text}",
-        ephemeral=True
+        ephemeral=False
     )
 
 
@@ -361,29 +361,29 @@ async def downloadfile(
     檔名: str
 ):
     if not await has_permission(interaction.user.id, "read"):
-        await interaction.response.send_message("你目前沒有讀取權限。", ephemeral=True)
+        await interaction.response.send_message("你目前沒有讀取權限。", ephemeral=False)
         return
 
     base = Path(BASE_PATH).resolve()
     target_dir = (base / 分類 / 路徑).resolve()
 
     if base not in target_dir.parents and target_dir != base:
-        await interaction.response.send_message("路徑不合法。", ephemeral=True)
+        await interaction.response.send_message("路徑不合法。", ephemeral=False)
         return
 
     safe_name = Path(檔名).name
     target_file = (target_dir / safe_name).resolve()
 
     if target_dir not in target_file.parents:
-        await interaction.response.send_message("檔名不合法。", ephemeral=True)
+        await interaction.response.send_message("檔名不合法。", ephemeral=False)
         return
 
     if not target_file.exists() or not target_file.is_file():
-        await interaction.response.send_message("找不到指定檔案。", ephemeral=True)
+        await interaction.response.send_message("找不到指定檔案。", ephemeral=False)
         return
 
     if target_file.stat().st_size > 25 * 1024 * 1024:
-        await interaction.response.send_message("檔案超過 25MB，無法直接傳送。", ephemeral=True)
+        await interaction.response.send_message("檔案超過 25MB，無法直接傳送。", ephemeral=False)
         return
 
     await interaction.response.send_message(file=discord.File(str(target_file)))
@@ -395,7 +395,7 @@ async def createfolder(
     日期: str = None
 ):
     if not await has_permission(interaction.user.id, "create_folder"):
-        await interaction.response.send_message("你目前沒有建立資料夾權限。", ephemeral=True)
+        await interaction.response.send_message("你目前沒有建立資料夾權限。", ephemeral=False)
         return
 
     await interaction.response.defer(ephemeral=False)
@@ -425,7 +425,7 @@ async def help_command(interaction: discord.Interaction):
             value=cmd.description or "沒有說明",
             inline=False
         )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
 # 啟動機器人
