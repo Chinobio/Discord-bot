@@ -58,7 +58,7 @@ async def on_ready():
 # 上傳檔案
 BASE_PATH = "/mnt/reports"
 SMALLMEET_TYPES = {"aitool", "watchpaper", "bookreport", "article"}
-IDENTITY_FILE = Path("identities.json")
+IDENTITY_FILE = Path(__file__).resolve().parent / "identities.json"
 IDENTITY_LOCK = asyncio.Lock()
 DEFAULT_IDENTITY = "viewer"
 
