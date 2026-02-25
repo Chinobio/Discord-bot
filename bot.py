@@ -2,12 +2,14 @@
 import discord
 from discord import app_commands
 import os
+import json
 from dotenv import load_dotenv
 from datetime import datetime
 import re
 import resend
 import asyncio
 from datetime import datetime, timedelta
+from pathlib import Path
 
 # 載入 .env 檔案（裡面放你的 Token）
 load_dotenv()
@@ -56,6 +58,21 @@ async def on_ready():
 # 上傳檔案
 BASE_PATH = "/mnt/reports"
 SMALLMEET_TYPES = {"aitool", "watchpaper", "bookreport", "article"}
+IDENTITY_FILE = Path("identities.json")
+IDENTITY_LOCK = asyncio.Lock()
+DEFAULT_IDENTITY = "viewer"
+
+ROLE_PERMISSIONS = {
+    "admin": {"upload", "read", "create_folder", "manage_identity"},
+    "uploader": {"upload", "read"},
+    "viewer": {"read"},
+}
+
+AUTO_ROLE_BY_IDENTITY = {
+    "admin": "Admin",
+    "uploader": "Uploader",
+    "viewer": "Viewer",
+}
 
 # Resend 設定
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")  # 從 .env 讀取
@@ -85,6 +102,72 @@ CATEGORIES = {
 BOOKREPORTLIST = {
     "Large Language Models A Deep Dive" : "Large Language Models A Deep Dive"
 }
+
+
+def load_identity_map() -> dict:
+    if not IDENTITY_FILE.exists():
+        return {}
+    try:
+        with open(IDENTITY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_identity_map(identity_map: dict) -> None:
+    with open(IDENTITY_FILE, "w", encoding="utf-8") as f:
+        json.dump(identity_map, f, ensure_ascii=False, indent=2)
+
+
+async def get_user_identity(user_id: int) -> str:
+    async with IDENTITY_LOCK:
+        identity_map = load_identity_map()
+    return identity_map.get(str(user_id), DEFAULT_IDENTITY)
+
+
+async def set_user_identity(user_id: int, identity: str) -> None:
+    async with IDENTITY_LOCK:
+        identity_map = load_identity_map()
+        identity_map[str(user_id)] = identity
+        save_identity_map(identity_map)
+
+
+async def ensure_user_identity(user_id: int) -> str:
+    async with IDENTITY_LOCK:
+        identity_map = load_identity_map()
+        uid = str(user_id)
+        if uid not in identity_map:
+            identity_map[uid] = DEFAULT_IDENTITY
+            save_identity_map(identity_map)
+        return identity_map[uid]
+
+
+async def has_permission(user_id: int, permission: str) -> bool:
+    identity = await get_user_identity(user_id)
+    allowed = ROLE_PERMISSIONS.get(identity, set())
+    return permission in allowed
+
+
+async def apply_discord_role(member: discord.Member, identity: str) -> None:
+    role_name = AUTO_ROLE_BY_IDENTITY.get(identity)
+    if not role_name:
+        return
+    role = discord.utils.get(member.guild.roles, name=role_name)
+    if not role:
+        return
+    if role in member.roles:
+        return
+    try:
+        await member.add_roles(role, reason="Sync identity from bot JSON")
+    except discord.Forbidden:
+        pass
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    identity = await ensure_user_identity(member.id)
+    await apply_discord_role(member, identity)
 
 async def date_autocomplete(interaction: discord.Interaction, current: str):
 
@@ -156,6 +239,10 @@ async def uploadfile(
     學生姓名: str,
     檔案: discord.Attachment
 ):
+    if not await has_permission(interaction.user.id, "upload"):
+        await interaction.response.send_message("你目前沒有上傳權限。", ephemeral=True)
+        return
+
     await interaction.response.defer()
 
     category_value = 檔案類別.value
@@ -229,12 +316,88 @@ Dear professor,
 
     asyncio.create_task(send_email_async(params))
 
+
+@bot.tree.command(name="setidentity", description="設定使用者身分（admin）")
+@app_commands.describe(使用者="要設定的人", 身分="admin / uploader / viewer")
+@app_commands.choices(身分=[
+    app_commands.Choice(name="admin", value="admin"),
+    app_commands.Choice(name="uploader", value="uploader"),
+    app_commands.Choice(name="viewer", value="viewer"),
+])
+async def setidentity(
+    interaction: discord.Interaction,
+    使用者: discord.Member,
+    身分: app_commands.Choice[str]
+):
+    if not await has_permission(interaction.user.id, "manage_identity"):
+        await interaction.response.send_message("你沒有管理身分的權限。", ephemeral=True)
+        return
+
+    await set_user_identity(使用者.id, 身分.value)
+    await apply_discord_role(使用者, 身分.value)
+    await interaction.response.send_message(
+        f"已設定 {使用者.mention} 身分為 `{身分.value}`。",
+        ephemeral=True
+    )
+
+
+@bot.tree.command(name="myidentity", description="查看自己的身分與權限")
+async def myidentity(interaction: discord.Interaction):
+    identity = await ensure_user_identity(interaction.user.id)
+    perms = sorted(ROLE_PERMISSIONS.get(identity, set()))
+    perms_text = ", ".join(perms) if perms else "無"
+    await interaction.response.send_message(
+        f"你的身分：`{identity}`\n可用權限：{perms_text}",
+        ephemeral=True
+    )
+
+
+@bot.tree.command(name="downloadfile", description="從 NAS 下載檔案（依身分控管）")
+@app_commands.describe(分類="例如 bigmeet 或 smallmeet", 路徑="資料夾路徑", 檔名="檔案名稱")
+async def downloadfile(
+    interaction: discord.Interaction,
+    分類: str,
+    路徑: str,
+    檔名: str
+):
+    if not await has_permission(interaction.user.id, "read"):
+        await interaction.response.send_message("你目前沒有讀取權限。", ephemeral=True)
+        return
+
+    base = Path(BASE_PATH).resolve()
+    target_dir = (base / 分類 / 路徑).resolve()
+
+    if base not in target_dir.parents and target_dir != base:
+        await interaction.response.send_message("路徑不合法。", ephemeral=True)
+        return
+
+    safe_name = Path(檔名).name
+    target_file = (target_dir / safe_name).resolve()
+
+    if target_dir not in target_file.parents:
+        await interaction.response.send_message("檔名不合法。", ephemeral=True)
+        return
+
+    if not target_file.exists() or not target_file.is_file():
+        await interaction.response.send_message("找不到指定檔案。", ephemeral=True)
+        return
+
+    if target_file.stat().st_size > 25 * 1024 * 1024:
+        await interaction.response.send_message("檔案超過 25MB，無法直接傳送。", ephemeral=True)
+        return
+
+    await interaction.response.send_message(file=discord.File(str(target_file)))
+
 # =============================================================================
 @bot.tree.command(name = "createfolder", description = "建立每周新的資料夾")
 async def createfolder(
     interaction: discord.Interaction,
     日期: str = None
 ):
+    if not await has_permission(interaction.user.id, "create_folder"):
+        await interaction.response.send_message("你目前沒有建立資料夾權限。", ephemeral=True)
+        return
+
     await interaction.response.defer(ephemeral=False)
 # 路徑設定
     BASE_PATH = "/mnt/reports"
