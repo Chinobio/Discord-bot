@@ -226,7 +226,11 @@ async def send_email_async(params):
 @app_commands.describe(
     檔案類別="選擇分類",
     日期資料夾="選擇或輸入日期資料夾 (建議選週一日期)",
-    檔案="選擇檔案"
+    檔案1="選擇第 1 個檔案",
+    檔案2="選擇第 2 個檔案（可選）",
+    檔案3="選擇第 3 個檔案（可選）",
+    檔案4="選擇第 4 個檔案（可選）",
+    檔案5="選擇第 5 個檔案（可選）"
 )
 @app_commands.choices(檔案類別=[
     app_commands.Choice(name=k, value=v) for k, v in CATEGORIES.items()
@@ -237,7 +241,11 @@ async def uploadfile(
     檔案類別: app_commands.Choice[str],
     日期資料夾: str,
     學生姓名: str,
-    檔案: discord.Attachment
+    檔案1: discord.Attachment,
+    檔案2: discord.Attachment | None = None,
+    檔案3: discord.Attachment | None = None,
+    檔案4: discord.Attachment | None = None,
+    檔案5: discord.Attachment | None = None
 ):
     if not await has_permission(interaction.user.id, "upload"):
         await interaction.response.send_message("你目前沒有上傳權限。", ephemeral=False)
@@ -262,21 +270,34 @@ async def uploadfile(
         await interaction.followup.send(f"建立資料夾失敗：{str(e)}", ephemeral=False)
         return
 
-    # 儲存檔案
-    final_filename = 檔案.filename
-    save_path = os.path.join(target_dir, final_filename)
+    upload_files = [f for f in [檔案1, 檔案2, 檔案3, 檔案4, 檔案5] if f is not None]
+    if not upload_files:
+        await interaction.followup.send("沒有收到檔案。", ephemeral=False)
+        return
 
-    await 檔案.save(save_path)
+    uploaded_names = []
+    total_size_bytes = 0
+    saved_files = []
 
-    size_mb = round(檔案.size / (1024 * 1024), 2)
+    for file in upload_files:
+        final_filename = file.filename
+        save_path = os.path.join(target_dir, final_filename)
+        await file.save(save_path)
+        uploaded_names.append(final_filename)
+        total_size_bytes += file.size
+        saved_files.append((final_filename, save_path))
+
+    total_size_mb = round(total_size_bytes / (1024 * 1024), 2)
+    file_list_text = "\n".join([f"- {name}" for name in uploaded_names])
 
     # Discord 回覆
     await interaction.followup.send(
         f"✅ 上傳完成\n"
         f"類別：{檔案類別.name}\n"
         f"資料夾：{logical_path}\n"
-        f"檔名：{final_filename}\n"
-        f"大小：{size_mb} MB\n"
+        f"檔案數：{len(uploaded_names)}\n"
+        f"總大小：{total_size_mb} MB\n"
+        f"檔案列表：\n{file_list_text}\n"
         f"上傳者：{interaction.user.mention}"
     )
 
@@ -284,8 +305,16 @@ async def uploadfile(
     # 寄信部分保持原樣（以下不變）
     # ────────────────────────────────────────
     import base64
-    with open(save_path, "rb") as f:
-        file_base64 = base64.b64encode(f.read()).decode()
+    email_attachments = []
+    for filename, save_path in saved_files:
+        with open(save_path, "rb") as f:
+            file_base64 = base64.b64encode(f.read()).decode()
+        email_attachments.append(
+            {
+                "filename": filename,
+                "content": file_base64
+            }
+        )
 
     email_content = f"""
 Dear professor,
@@ -293,7 +322,9 @@ Dear professor,
 已上傳新檔案：
 
 類別：{檔案類別.name}
-檔名：{final_filename}
+檔案數：{len(uploaded_names)}
+檔案列表：
+{file_list_text}
 
 附件已附上，請查收。
 
@@ -304,14 +335,9 @@ Dear professor,
     params = {
         "from": "通知系統 <ailab@chuangyinezhe.dpdns.org>",
         "to": ["chuangyinezhe@gmail.com"],
-        "subject": f"[{檔案類別.name}] 新檔案上傳 - {final_filename}",
+        "subject": f"[{檔案類別.name}] 新檔案上傳 - 共 {len(uploaded_names)} 份",
         "text": email_content,
-        "attachments": [
-            {
-                "filename": final_filename,
-                "content": file_base64
-            }
-        ]
+        "attachments": email_attachments
     }
 
     asyncio.create_task(send_email_async(params))
