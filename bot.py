@@ -217,7 +217,7 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
     ]
 
 import traceback
-async def send_email_async(params, interaction=None):
+async def send_email_async(params):
     try:
         print("=== START SEND EMAIL ===")
         print("subject:", params.get("subject"))
@@ -228,15 +228,10 @@ async def send_email_async(params, interaction=None):
         print("=== EMAIL SENT SUCCESS ===")
         print(result)
 
-        if interaction:
-            await interaction.channel.send("📧 通知信已寄出")
     except Exception as e:
         print("=== EMAIL ERROR ===")
         print(repr(e))
         traceback.print_exc()
-
-        if interaction:
-            await interaction.channel.send(f"⚠️ 背景寄信失敗：{e}")
 
 @bot.tree.command(name="uploadfile", description="上傳到 NAS 並自動寄信")
 @app_commands.describe(
@@ -314,7 +309,8 @@ async def uploadfile(
         f"檔案數：{len(uploaded_names)}\n"
         f"總大小：{total_size_mb} MB\n"
         f"檔案列表：\n{file_list_text}\n"
-        f"上傳者：{interaction.user.mention}"
+        f"上傳者：{interaction.user.mention}\n"
+        f"📧 通知信已排入背景寄送"
     )
 
     # ────────────────────────────────────────
@@ -355,8 +351,13 @@ Dear professor,
         "text": email_content,
         "attachments": email_attachments
     }
+    print("prepare email params")
+    print("from:", params["from"])
+    print("to:", params["to"])
+    print("subject:", params["subject"])
 
-    asyncio.create_task(send_email_async(params, interaction))
+
+    asyncio.create_task(send_email_async(params))
 
 
 @bot.tree.command(name="setidentity", description="設定使用者身分（admin）")
