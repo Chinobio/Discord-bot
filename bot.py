@@ -215,12 +215,28 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
         app_commands.Choice(name=f"{d} (週一)", value=d)
         for d in filtered[:25]
     ]
-async def send_email_async(params):
+
+import traceback
+async def send_email_async(params, interaction=None):
     try:
-        await asyncio.to_thread(resend.Emails.send, params)
-        print("EMAIL SENT")
+        print("=== START SEND EMAIL ===")
+        print("subject:", params.get("subject"))
+        print("to:", params.get("to"))
+
+        result = await asyncio.to_thread(resend.Emails.send, params)
+
+        print("=== EMAIL SENT SUCCESS ===")
+        print(result)
+
+        if interaction:
+            await interaction.channel.send("📧 通知信已寄出")
     except Exception as e:
-        print("EMAIL ERROR:", e)
+        print("=== EMAIL ERROR ===")
+        print(repr(e))
+        traceback.print_exc()
+
+        if interaction:
+            await interaction.channel.send(f"⚠️ 背景寄信失敗：{e}")
 
 @bot.tree.command(name="uploadfile", description="上傳到 NAS 並自動寄信")
 @app_commands.describe(
@@ -340,7 +356,7 @@ Dear professor,
         "attachments": email_attachments
     }
 
-    asyncio.create_task(send_email_async(params))
+    asyncio.create_task(send_email_async(params, interaction))
 
 
 @bot.tree.command(name="setidentity", description="設定使用者身分（admin）")
