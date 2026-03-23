@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 import smtplib
@@ -43,8 +43,17 @@ class MyBot(discord.Client):
 
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
-        await self.tree.sync(guild=guild)
-        print("指令同步完成", flush=True)
+
+        # Rebuild guild commands from current code so old signatures do not linger.
+        self.tree.clear_commands(guild=guild)
+        self.tree.copy_global_to(guild=guild)
+        guild_commands = await self.tree.sync(guild=guild)
+
+        # Clear old global registrations with stale signatures.
+        self.tree.clear_commands(guild=None)
+        await self.tree.sync()
+
+        print(f"指令同步完成，guild 指令數：{len(guild_commands)}", flush=True)
 
 
 bot = MyBot(intents=intents)
@@ -95,11 +104,13 @@ def normalize_identity_entry(value):
 def load_identity_map():
     if not IDENTITY_FILE.exists():
         return {}
+
     try:
         with open(IDENTITY_FILE, "r", encoding="utf-8") as file:
             raw_data = json.load(file)
     except Exception:
         return {}
+
     return {
         user_id: normalize_identity_entry(value)
         for user_id, value in raw_data.items()
@@ -136,8 +147,10 @@ def update_user_name(user: discord.abc.User):
     data = load_identity_map()
     user_id = str(user.id)
     entry = data.get(user_id)
+
     if entry is None:
         return
+
     entry["name"] = getattr(user, "display_name", user.name)
     data[user_id] = entry
     save_identity_map(data)
@@ -150,12 +163,14 @@ def build_upload_paths(category: str, upload_date: str):
     else:
         target_dir = os.path.join(BASE_PATH, "smallmeet", category, upload_date)
         logical_path = f"smallmeet/{category}/{upload_date}"
+
     return target_dir, logical_path
 
 
 async def send_email(subject: str, body: str, attachments):
     try:
         print("=== START SMTP ===", flush=True)
+
         message = MIMEMultipart()
         message["From"] = SMTP_USER
         message["To"] = FIXED_RECIPIENT
@@ -171,9 +186,13 @@ async def send_email(subject: str, body: str, attachments):
                 part = MIMEBase("application", "octet-stream")
                 with open(path, "rb") as file:
                     part.set_payload(file.read())
+
                 encoders.encode_base64(part)
                 encoded_name = str(Header(filename, "utf-8"))
-                part.add_header("Content-Disposition", f'attachment; filename="{encoded_name}"')
+                part.add_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{encoded_name}"',
+                )
                 message.attach(part)
         else:
             message.attach(
@@ -192,6 +211,7 @@ async def send_email(subject: str, body: str, attachments):
 
         await asyncio.to_thread(send)
         print("=== EMAIL SENT ===", flush=True)
+
     except Exception as exc:
         print("=== EMAIL ERROR ===", flush=True)
         print(exc, flush=True)
@@ -203,10 +223,12 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
     del interaction
     today = datetime.now()
     this_monday = today - timedelta(days=today.weekday())
+
     dates = [
         (this_monday - timedelta(weeks=index)).strftime("%Y%m%d")
         for index in range(15)
     ]
+
     return [
         app_commands.Choice(name=f"{date_value} (週一)", value=date_value)
         for date_value in dates
@@ -219,10 +241,13 @@ def build_help_text(role: str):
         "可用指令如下：",
         "/help - 查看所有可用指令",
     ]
+
     if "upload" in ROLE_PERMISSIONS.get(role, set()):
         lines.append("/uploadfile - 上傳檔案到 NAS 並寄送通知信")
+
     if "manage_roles" in ROLE_PERMISSIONS.get(role, set()):
         lines.append("/setidentity - 設定成員權限（admin / uploader / viewer）")
+
     lines.append(f"你目前的權限是：{role}")
     return "\n".join(lines)
 
@@ -293,9 +318,7 @@ async def uploadfile(
         "以下是本次上傳內容，敬請查收。\n\n"
         f"分類：{category_label}\n"
         f"日期：{upload_date}\n"
-        f"說明：{note}\n"
-        f"NAS 路徑：{logical_path}\n"
-        f"上傳者：{interaction.user.display_name}\n"
+        f"學生 {interaction.user.display_name}\n敬上"
     )
 
     try:
@@ -323,13 +346,18 @@ async def setidentity(
         await interaction.response.send_message("你沒有更改權限的權限。", ephemeral=True)
         return
 
-    role = role.value.lower().strip()
-    if role not in ROLE_CHOICES:
-        await interaction.response.send_message("角色只能是 admin、uploader 或 viewer。", ephemeral=True)
+    selected_role = role.value.lower().strip()
+    if selected_role not in ROLE_CHOICES:
+        await interaction.response.send_message(
+            "角色只能是 admin、uploader 或 viewer。",
+            ephemeral=True,
+        )
         return
 
-    await set_user_identity(member, role)
-    await interaction.response.send_message(f"已將 {member.display_name} 設定為 {role}。")
+    await set_user_identity(member, selected_role)
+    await interaction.response.send_message(
+        f"已將 {member.display_name} 設定為 {selected_role}。"
+    )
 
 
 @bot.tree.command(name="help", description="查看所有可用指令")
