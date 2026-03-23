@@ -330,9 +330,7 @@ async def uploadfile(
         "以下是本次上傳內容，敬請查收。\n\n"
         f"分類：{category_label}\n"
         f"日期：{upload_date}\n"
-        f"說明：{note}\n"
-        f"NAS 路徑：{logical_path}\n"
-        f"上傳者：{interaction.user.display_name}\n"
+        f"學生 {interaction.user.display_name}\n敬上"
     )
 
     try:
