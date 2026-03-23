@@ -218,6 +218,7 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
 
 import traceback
 async def send_email_async(params):
+    print("=== ENTER send_email_async ===")
     try:
         print("=== START SEND EMAIL ===")
         print("subject:", params.get("subject"))
