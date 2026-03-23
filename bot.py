@@ -218,7 +218,8 @@ async def date_autocomplete(interaction: discord.Interaction, current: str):
 
 import traceback
 async def send_email_async(params):
-    print("=== ENTER send_email_async ===")
+    print("=== ENTER send_email_async ===", flush=True)
+    print("=== START SEND EMAIL ===", flush=True)
     try:
         print("=== START SEND EMAIL ===")
         print("subject:", params.get("subject"))
@@ -352,14 +353,15 @@ Dear professor,
         "text": email_content,
         "attachments": email_attachments
     }
-    print("prepare email params")
-    print("from:", params["from"])
-    print("to:", params["to"])
-    print("subject:", params["subject"])
+    print("prepare email params", flush=True)
+    print("from:", params["from"], flush=True)
+    print("to:", params["to"], flush=True)
+    print("subject:", params["subject"], flush=True)
 
 
-    print("CREATE EMAIL TASK")
-    asyncio.create_task(send_email_async(params))
+    print("=== CALL SEND EMAIL ===", flush=True)
+    await send_email_async(params)
+    print("=== EMAIL DONE ===", flush=True)
 
 
 @bot.tree.command(name="setidentity", description="設定使用者身分（admin）")
