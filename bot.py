@@ -257,7 +257,7 @@ def build_help_text(role: str):
 @app_commands.describe(
     upload_date="選擇週一日期，格式 YYYYMMDD",
     category="上傳分類",
-    note="這次上傳的說明",
+    name="你的名字（會出現在通知信裡）",
     file1="第一個附件",
     file2="第二個附件",
     file3="第三個附件",
