@@ -76,10 +76,10 @@ ROLE_PERMISSIONS = {
 }
 
 CATEGORY_OPTIONS = {
-    "bigmeet": "大會議",
+    "bigmeet": "大咪",
     "aitool": "AI工具",
     "article": "文章",
-    "bookreport": "讀書心得",
+    "bookreport": "報書",
     "sharepaper": "論文分享",
 }
 
