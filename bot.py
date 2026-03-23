@@ -16,13 +16,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
-# ====== Load .env ======
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 TOKEN = os.getenv("TOKEN")
 
-# ====== SMTP ======
 SMTP_SERVER = os.getenv("SMTP_SERVER")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_USER = os.getenv("SMTP_USER")
@@ -31,7 +29,6 @@ FIXED_RECIPIENT = "chuangyinezhe@gmail.com"
 
 print("SMTP_USER:", SMTP_USER, flush=True)
 
-# ====== Discord ======
 GUILD_ID = 1461250014381609002
 
 intents = discord.Intents.default()
@@ -58,10 +55,7 @@ async def on_ready():
     print(f"Bot 上線：{bot.user}", flush=True)
 
 
-# ====== NAS ======
 BASE_PATH = "/mnt/reports"
-
-# ====== Identity / Role ======
 IDENTITY_FILE = BASE_DIR / "identities.json"
 DEFAULT_ROLE = "viewer"
 ROLE_CHOICES = ("admin", "uploader", "viewer")
@@ -81,19 +75,17 @@ CATEGORY_OPTIONS = {
 }
 
 
-def normalize_identity_entry(user_id: str, value):
+def normalize_identity_entry(value):
     if isinstance(value, dict):
         return {
             "name": value.get("name", ""),
             "role": value.get("role", DEFAULT_ROLE),
         }
-
     if isinstance(value, str):
         return {
             "name": "",
             "role": value,
         }
-
     return {
         "name": "",
         "role": DEFAULT_ROLE,
@@ -103,18 +95,15 @@ def normalize_identity_entry(user_id: str, value):
 def load_identity_map():
     if not IDENTITY_FILE.exists():
         return {}
-
     try:
         with open(IDENTITY_FILE, "r", encoding="utf-8") as file:
             raw_data = json.load(file)
     except Exception:
         return {}
-
-    normalized = {
-        user_id: normalize_identity_entry(user_id, value)
+    return {
+        user_id: normalize_identity_entry(value)
         for user_id, value in raw_data.items()
     }
-    return normalized
 
 
 def save_identity_map(data):
@@ -147,10 +136,8 @@ def update_user_name(user: discord.abc.User):
     data = load_identity_map()
     user_id = str(user.id)
     entry = data.get(user_id)
-
     if entry is None:
         return
-
     entry["name"] = getattr(user, "display_name", user.name)
     data[user_id] = entry
     save_identity_map(data)
@@ -163,15 +150,12 @@ def build_upload_paths(category: str, upload_date: str):
     else:
         target_dir = os.path.join(BASE_PATH, "smallmeet", category, upload_date)
         logical_path = f"smallmeet/{category}/{upload_date}"
-
     return target_dir, logical_path
 
 
-# ====== SMTP ======
 async def send_email(subject: str, body: str, attachments):
     try:
         print("=== START SMTP ===", flush=True)
-
         message = MIMEMultipart()
         message["From"] = SMTP_USER
         message["To"] = FIXED_RECIPIENT
@@ -187,13 +171,9 @@ async def send_email(subject: str, body: str, attachments):
                 part = MIMEBase("application", "octet-stream")
                 with open(path, "rb") as file:
                     part.set_payload(file.read())
-
                 encoders.encode_base64(part)
                 encoded_name = str(Header(filename, "utf-8"))
-                part.add_header(
-                    "Content-Disposition",
-                    f'attachment; filename="{encoded_name}"',
-                )
+                part.add_header("Content-Disposition", f'attachment; filename="{encoded_name}"')
                 message.attach(part)
         else:
             message.attach(
@@ -212,7 +192,6 @@ async def send_email(subject: str, body: str, attachments):
 
         await asyncio.to_thread(send)
         print("=== EMAIL SENT ===", flush=True)
-
     except Exception as exc:
         print("=== EMAIL ERROR ===", flush=True)
         print(exc, flush=True)
@@ -220,30 +199,18 @@ async def send_email(subject: str, body: str, attachments):
         raise
 
 
-# ====== Autocomplete ======
 async def date_autocomplete(interaction: discord.Interaction, current: str):
     del interaction
     today = datetime.now()
     this_monday = today - timedelta(days=today.weekday())
-
     dates = [
         (this_monday - timedelta(weeks=index)).strftime("%Y%m%d")
         for index in range(15)
     ]
-
     return [
         app_commands.Choice(name=f"{date_value} (週一)", value=date_value)
         for date_value in dates
         if current in date_value
-    ][:25]
-
-
-async def role_autocomplete(interaction: discord.Interaction, current: str):
-    del interaction
-    return [
-        app_commands.Choice(name=role, value=role)
-        for role in ROLE_CHOICES
-        if current.lower() in role.lower()
     ][:25]
 
 
@@ -252,18 +219,14 @@ def build_help_text(role: str):
         "可用指令如下：",
         "/help - 查看所有可用指令",
     ]
-
     if "upload" in ROLE_PERMISSIONS.get(role, set()):
         lines.append("/uploadfile - 上傳檔案到 NAS 並寄送通知信")
-
     if "manage_roles" in ROLE_PERMISSIONS.get(role, set()):
         lines.append("/setidentity - 設定成員權限（admin / uploader / viewer）")
-
     lines.append(f"你目前的權限是：{role}")
     return "\n".join(lines)
 
 
-# ====== Commands ======
 @bot.tree.command(name="uploadfile", description="上傳檔案到 NAS，並寄出通知信")
 @app_commands.autocomplete(upload_date=date_autocomplete)
 @app_commands.describe(
@@ -330,7 +293,9 @@ async def uploadfile(
         "以下是本次上傳內容，敬請查收。\n\n"
         f"分類：{category_label}\n"
         f"日期：{upload_date}\n"
-        f"學生 {interaction.user.display_name}\n敬上"
+        f"說明：{note}\n"
+        f"NAS 路徑：{logical_path}\n"
+        f"上傳者：{interaction.user.display_name}\n"
     )
 
     try:
@@ -341,29 +306,30 @@ async def uploadfile(
 
 
 @bot.tree.command(name="setidentity", description="設定成員權限")
-@app_commands.autocomplete(role=role_autocomplete)
-@app_commands.describe(member="要設定的成員", role="可選：admin / uploader / viewer")
+@app_commands.describe(member="要設定的成員", role="選擇權限")
+@app_commands.choices(
+    role=[
+        app_commands.Choice(name="admin", value="admin"),
+        app_commands.Choice(name="uploader", value="uploader"),
+        app_commands.Choice(name="viewer", value="viewer"),
+    ]
+)
 async def setidentity(
     interaction: discord.Interaction,
     member: discord.Member,
-    role: str,
+    role: app_commands.Choice[str],
 ):
     if not await has_permission(interaction.user.id, "manage_roles"):
         await interaction.response.send_message("你沒有更改權限的權限。", ephemeral=True)
         return
 
-    role = role.lower().strip()
+    role = role.value.lower().strip()
     if role not in ROLE_CHOICES:
-        await interaction.response.send_message(
-            "角色只能是 admin、uploader 或 viewer。",
-            ephemeral=True,
-        )
+        await interaction.response.send_message("角色只能是 admin、uploader 或 viewer。", ephemeral=True)
         return
 
     await set_user_identity(member, role)
-    await interaction.response.send_message(
-        f"已將 {member.display_name} 設定為 {role}。"
-    )
+    await interaction.response.send_message(f"已將 {member.display_name} 設定為 {role}。")
 
 
 @bot.tree.command(name="help", description="查看所有可用指令")
