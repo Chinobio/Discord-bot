@@ -272,7 +272,7 @@ async def uploadfile(
     interaction: discord.Interaction,
     upload_date: str,
     category: app_commands.Choice[str],
-    note: str,
+    name: str,
     file1: discord.Attachment,
     file2: discord.Attachment | None = None,
     file3: discord.Attachment | None = None,
@@ -318,7 +318,7 @@ async def uploadfile(
         "以下是本次上傳內容，敬請查收。\n\n"
         f"分類：{category_label}\n"
         f"日期：{upload_date}\n"
-        f"學生 {interaction.user.display_name}\n敬上"
+        f"學生 {name}\n敬上"
     )
 
     try:
