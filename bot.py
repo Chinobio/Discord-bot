@@ -347,7 +347,7 @@ Dear professor,
 """.strip()
 
     params = {
-        "from": "通知系統 <ailab@chuangyinezhe.dpdns.org>",
+        "from": "通知系統 <onboarding@resend.dev>",
         "to": ["chuangyinezhe@gmail.com"],
         "subject": f"[{檔案類別.name}] 新檔案上傳 - 共 {len(uploaded_names)} 份",
         "text": email_content,
